@@ -1,16 +1,88 @@
 // (C) Copyright 2024 Hewlett Packard Enterprise Development LP
+
 package reader
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"os"
 	"path/filepath"
 
+	log "github.com/sirupsen/logrus"
+
+	"github.com/HewlettPackard/terraschema/pkg/model"
+	"github.com/HewlettPackard/terraschema/pkg/registry"
+	"github.com/HewlettPackard/terraschema/pkg/registry/regsrc"
+	getter "github.com/hashicorp/go-getter"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclparse"
-
-	"github.com/HewlettPackard/terraschema/pkg/model"
 )
+
+type RegistryClient struct {
+	Client *registry.Client
+	ctx    context.Context
+	client *http.Client
+}
+
+func NewRegistryClient(ctx context.Context, client *http.Client) *RegistryClient {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return &RegistryClient{
+		Client: registry.NewClient(client),
+		ctx:    ctx,
+		client: client,
+	}
+}
+
+// FetchModule downloads and extracts a module from the registry to a temp dir, returns local path.
+func (rc *RegistryClient) FetchModule(address, version string) (*regsrc.Module, string, error) {
+	src, err := regsrc.ParseModuleSource(address)
+	if err != nil {
+		return nil, "", err
+	}
+	mod, err := rc.Client.ModuleLocation(rc.ctx, src, version)
+	if err != nil {
+		return src, "", err
+	}
+
+	tmpDir, err := os.MkdirTemp("", "tfmod-*")
+	if err != nil {
+		return src, "", err
+	}
+	log.Debugln(src)
+	log.Debugln(mod)
+	client := &getter.Client{
+		Ctx:  rc.ctx,
+		Src:  mod,
+		Dst:  tmpDir,
+		Mode: getter.ClientModeAny,
+	}
+	return src, tmpDir, client.Get()
+}
+
+// RemoteRegistryClient and support for fetching Terraform modules from remote registries
+// (initial interface and stub, implementation to follow)
+
+type ModuleSourceType int
+
+const (
+	ModuleSourceLocalDir ModuleSourceType = iota
+	ModuleSourceRemoteRegistry
+)
+
+type ModuleSource struct {
+	Type    ModuleSourceType
+	Path    string // local path or registry address
+	Version string // for remote registry
+}
+
+type RemoteRegistryClient interface {
+	// FetchModule downloads and extracts a module from the registry to a temp dir, returns local path
+	FetchModule(address, version string) (string, error)
+}
 
 var fileSchema = &hcl.BodySchema{
 	Blocks: []hcl.BlockHeaderSchema{

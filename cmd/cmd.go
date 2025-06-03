@@ -9,10 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/spf13/cobra"
 
 	tsjson "github.com/HewlettPackard/terraschema/pkg/json"
 	"github.com/HewlettPackard/terraschema/pkg/jsonschema"
+	"github.com/HewlettPackard/terraschema/pkg/reader"
 )
 
 var (
@@ -29,6 +32,11 @@ var (
 	escapeJSON                   bool
 	ignoreVariables              []string
 	rootProperties               []string
+)
+
+var (
+	registryAddress string
+	registryVersion string
 )
 
 // rootCmd is the base command for terraschema
@@ -60,6 +68,11 @@ func Execute() error {
 }
 
 func init() {
+	rootCmd.Flags().StringVar(&registryAddress, "registry-address", "",
+		"Terraform Registry address (e.g. registry.terraform.io/hashicorp/aws)")
+	rootCmd.Flags().StringVar(&registryVersion, "registry-version", "",
+		"Terraform Registry module version (e.g. 5.0.0)")
+
 	rootCmd.Flags().BoolVar(&disallowAdditionalProperties, "disallow-additional-properties", false,
 		"set additionalProperties to false in the JSON Schema and in nested objects",
 	)
@@ -184,6 +197,24 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	var err error
 
 	jsonIndent := "\t"
+
+	if debugOut {
+		log.SetLevel(log.DebugLevel)
+	}
+
+	// Remote registry fetch logic
+	if registryAddress != "" && registryVersion != "" {
+		rc := reader.NewRegistryClient(cmd.Context(), nil)
+		mod, tmpPath, err := rc.FetchModule(registryAddress, registryVersion)
+		if err != nil {
+			return fmt.Errorf("error fetching module from registry: %w", err)
+		}
+		defer os.Remove(tmpPath)
+		inputPath = tmpPath
+		if mod.RawSubmodule != "" {
+			inputPath = filepath.Join(tmpPath, mod.RawSubmodule)
+		}
+	}
 
 	if exportVariables {
 		if len(rootProperties) != 0 {
