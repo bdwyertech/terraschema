@@ -111,7 +111,7 @@ func ParseModuleSource(source string) (*Module, error) {
 	}
 
 	matches := moduleSourceRe.FindStringSubmatch(rest)
-	fmt.Println(matches)
+	// fmt.Println(matches)
 	if len(matches) < 4 {
 		return nil, ErrInvalidModuleSource
 	}
