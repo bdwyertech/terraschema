@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 
@@ -42,6 +44,21 @@ func (rc *RegistryClient) FetchModule(address, version string) (*regsrc.Module, 
 	src, err := regsrc.ParseModuleSource(address)
 	if err != nil {
 		return nil, "", err
+	}
+	if version == "" {
+		versions, err := rc.Client.ModuleVersions(rc.ctx, src)
+		if err != nil {
+			return nil, "", err
+		}
+		if len(versions.Modules) > 0 && len(versions.Modules[0].Versions) > 0 {
+			latest := versions.Modules[0].Versions[0].Version
+			for _, ver := range versions.Modules[0].Versions {
+				if compareVersions(ver.Version, latest) > 0 {
+					latest = ver.Version
+				}
+			}
+			version = latest
+		}
 	}
 	mod, err := rc.Client.ModuleLocation(rc.ctx, src, version)
 	if err != nil {
@@ -206,4 +223,41 @@ func printToString(in hcl.Expression, f *hcl.File) string {
 	out := string(in.Range().SliceBytes(f.Bytes))
 
 	return out
+}
+
+// compareVersions compares two semantic version strings
+// Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+func compareVersions(v1, v2 string) int {
+	// Remove 'v' prefix if present
+	if len(v1) > 0 && v1[0] == 'v' {
+		v1 = v1[1:]
+	}
+	if len(v2) > 0 && v2[0] == 'v' {
+		v2 = v2[1:]
+	}
+	
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+	
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+	
+	for i := 0; i < maxLen; i++ {
+		var p1, p2 int
+		if i < len(parts1) {
+			p1, _ = strconv.Atoi(parts1[i])
+		}
+		if i < len(parts2) {
+			p2, _ = strconv.Atoi(parts2[i])
+		}
+		
+		if p1 > p2 {
+			return 1
+		} else if p1 < p2 {
+			return -1
+		}
+	}
+	return 0
 }

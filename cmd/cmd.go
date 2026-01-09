@@ -203,7 +203,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	// Remote registry fetch logic
-	if registryAddress != "" && registryVersion != "" {
+	if registryAddress != "" {
 		rc := reader.NewRegistryClient(cmd.Context(), nil)
 		mod, tmpPath, err := rc.FetchModule(registryAddress, registryVersion)
 		if err != nil {
